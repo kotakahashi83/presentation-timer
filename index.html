@@ -1,0 +1,963 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>プレゼンタイマー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* committed to a single dark "control room" world — no light-theme variant */
+    --bg:#08090A;
+    --bg-panel:#101214;
+    --bg-panel-2:#17191B;
+    --fg:#F0EDE4;
+    --fg-muted:#84837A;
+    --border:#333330;
+    --standby:#3E8DC9;
+    --warn:#FF8C1A;
+    --critical:#E2231A;
+    --alert:#FF2A1E;
+    --stripe-dark:#050505;
+    --shadow:0 0 0 1px rgba(255,255,255,0.03), 0 14px 40px rgba(0,0,0,0.65);
+    --focus:#FF8C1A;
+
+    --font-display:'Chakra Petch','Share Tech Mono',monospace;
+    --font-body:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif;
+    --font-mono:'Share Tech Mono','IBM Plex Mono',Consolas,monospace;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:radial-gradient(ellipse at 50% 20%, #0D0F10 0%, var(--bg) 65%);
+    color:var(--fg);
+    font-family:var(--font-body);
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+    position:relative;
+  }
+  body::after{
+    content:"";
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    background:repeating-linear-gradient(to bottom, rgba(255,255,255,0.018) 0 1px, transparent 1px 3px);
+    mix-blend-mode:overlay;
+    z-index:1;
+  }
+  button{font-family:inherit;}
+  :focus-visible{outline:2px solid var(--focus); outline-offset:2px;}
+
+  #alertOverlay{
+    position:fixed; inset:0;
+    background:var(--alert);
+    opacity:0;
+    pointer-events:none;
+    z-index:50;
+  }
+  #alertOverlay.klaxon-flash{ animation:klaxon-pulse 0.7s ease-in-out 4; }
+  @keyframes klaxon-pulse{ 0%,100%{opacity:0;} 50%{opacity:0.26;} }
+
+  #app{
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:clamp(16px,4vmin,40px);
+    gap:clamp(14px,2.5vmin,28px);
+    position:relative;
+    z-index:2;
+  }
+
+  .eyebrow{
+    align-self:stretch;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    max-width:640px;
+    width:100%;
+    margin:0 auto;
+    font-family:var(--font-mono);
+    font-size:0.7rem;
+    letter-spacing:0.16em;
+    text-transform:uppercase;
+    color:var(--fg-muted);
+  }
+  .eyebrow-left{display:flex; align-items:center; gap:8px;}
+  .dot{
+    width:7px; height:7px; border-radius:50%;
+    background:var(--standby);
+    box-shadow:0 0 6px var(--standby);
+  }
+
+  /* ---------- shared components ---------- */
+  .clip-corner{
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);
+  }
+
+  .mono-eyebrow{
+    font-family:var(--font-mono);
+    font-size:0.72rem;
+    letter-spacing:0.14em;
+    color:var(--warn);
+    text-transform:uppercase;
+    margin-bottom:4px;
+  }
+
+  /* ---------- Setup view ---------- */
+  #setupView{
+    width:100%;
+    max-width:560px;
+    margin:auto;
+    display:flex;
+    flex-direction:column;
+    gap:22px;
+  }
+  #setupView h1{
+    font-family:var(--font-body);
+    font-weight:900;
+    font-size:clamp(1.4rem,3.6vmin,1.9rem);
+    margin:0 0 2px;
+    text-wrap:balance;
+    letter-spacing:0.02em;
+  }
+  #setupView p.lead{
+    margin:0;
+    color:var(--fg-muted);
+    font-size:0.92rem;
+    line-height:1.7;
+  }
+  .card{
+    position:relative;
+    background:var(--bg-panel);
+    border:1px solid var(--border);
+    padding:24px 20px 20px;
+    box-shadow:var(--shadow);
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
+  .card::before{
+    content:"";
+    position:absolute;
+    top:0; left:0; right:0; height:3px;
+    background:var(--panel-accent, var(--standby));
+  }
+  .field-label{
+    font-size:0.82rem;
+    font-weight:700;
+    color:var(--fg);
+    letter-spacing:0.02em;
+  }
+  .field-hint{
+    font-size:0.78rem;
+    color:var(--fg-muted);
+    margin-top:-8px;
+  }
+  .presets{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .preset-btn{
+    border:1px solid var(--border);
+    background:var(--bg-panel-2);
+    color:var(--fg);
+    padding:7px 14px;
+    font-family:var(--font-mono);
+    font-size:0.84rem;
+    cursor:pointer;
+    transition:background .15s, border-color .15s, color .15s;
+  }
+  .preset-btn:hover{border-color:var(--warn);}
+  .preset-btn.active{
+    background:var(--warn);
+    border-color:var(--warn);
+    color:#1A0F00;
+    font-weight:700;
+  }
+
+  .duration-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .num-field{
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .num-field input{
+    width:4.2ch;
+    text-align:center;
+    font-family:var(--font-mono);
+    font-size:1.15rem;
+    font-variant-numeric:tabular-nums;
+    background:var(--bg-panel-2);
+    border:1px solid var(--border);
+    color:var(--fg);
+    padding:7px 4px;
+  }
+  .num-field span{color:var(--fg-muted); font-size:0.85rem;}
+  .duration-row .sep{color:var(--fg-muted); font-family:var(--font-mono);}
+
+  .chip-list{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .chip{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    background:var(--bg-panel-2);
+    border:1px solid var(--warn);
+    padding:6px 6px 6px 12px;
+    font-family:var(--font-mono);
+    font-size:0.86rem;
+    font-variant-numeric:tabular-nums;
+    color:var(--warn);
+  }
+  .chip button{
+    width:18px;height:18px;
+    border:none;
+    background:transparent;
+    color:var(--fg-muted);
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    font-size:0.9rem;
+    line-height:1;
+  }
+  .chip button:hover{background:var(--critical); color:#fff;}
+  .add-threshold{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .add-threshold button{
+    border:1px solid var(--warn);
+    background:transparent;
+    color:var(--warn);
+    padding:7px 14px;
+    font-family:var(--font-mono);
+    font-size:0.84rem;
+    cursor:pointer;
+    font-weight:600;
+  }
+  .add-threshold button:hover{background:var(--warn); color:#1A0F00;}
+
+  .primary-btn{
+    background:var(--warn);
+    color:#1A0F00;
+    border:none;
+    padding:16px 20px;
+    cursor:pointer;
+    box-shadow:var(--shadow);
+    transition:filter .15s;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:2px;
+  }
+  .primary-btn:hover{filter:brightness(1.08);}
+  .primary-btn:active{filter:brightness(0.96);}
+  .primary-btn .main{font-family:var(--font-body); font-weight:900; font-size:1.15rem; letter-spacing:0.04em;}
+  .primary-btn .sub{font-family:var(--font-mono); font-size:0.68rem; letter-spacing:0.2em;}
+
+  .secondary-row{
+    display:flex;
+    justify-content:center;
+  }
+  .ghost-btn{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:transparent;
+    border:1px solid var(--border);
+    color:var(--fg-muted);
+    padding:9px 16px;
+    font-family:var(--font-mono);
+    font-size:0.8rem;
+    letter-spacing:0.04em;
+    cursor:pointer;
+  }
+  .ghost-btn:hover{color:var(--warn); border-color:var(--warn);}
+  .ghost-btn svg{width:15px;height:15px;}
+
+  /* ---------- Stage view ---------- */
+  #stageView{
+    flex:1;
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:clamp(14px,2.4vmin,22px);
+  }
+
+  .hazard-bar{
+    width:100%;
+    max-width:520px;
+    height:7px;
+    background-image:repeating-linear-gradient(135deg, var(--tier-color) 0 14px, var(--stripe-dark) 14px 28px);
+    opacity:0;
+    transition:opacity .4s;
+  }
+  [data-tier="warn"] .hazard-bar{opacity:0.5;}
+  [data-tier="critical"] .hazard-bar{opacity:0.85;}
+  [data-tier="finished"] .hazard-bar,[data-tier="overtime"] .hazard-bar{opacity:1; animation:stripe-march 1s linear infinite;}
+  @keyframes stripe-march{ from{background-position:0 0;} to{background-position:56px 0;} }
+
+  .status-block{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:4px;
+  }
+  .status-pill{
+    font-family:var(--font-mono);
+    font-size:0.82rem;
+    letter-spacing:0.1em;
+    padding:6px 18px;
+    background:color-mix(in srgb, var(--tier-color) 16%, transparent);
+    color:var(--tier-color);
+    border:1px solid var(--tier-color);
+    font-weight:600;
+    transition:background .3s, color .3s, border-color .3s;
+  }
+  .tier-label{
+    font-family:var(--font-mono);
+    font-size:0.7rem;
+    letter-spacing:0.18em;
+    color:var(--tier-color);
+    opacity:0.85;
+    transition:color .3s;
+  }
+
+  .ring-wrap{
+    position:relative;
+    width:min(74vmin,500px);
+    aspect-ratio:1/1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .ring-wrap svg{
+    width:100%;
+    height:100%;
+    overflow:visible;
+  }
+  .ring-track{fill:none; stroke:#1D1E1F; stroke-width:8;}
+  .ring-progress{
+    fill:none;
+    stroke:var(--tier-color);
+    stroke-width:8;
+    stroke-linecap:butt;
+    transform:rotate(-90deg);
+    transform-origin:100px 100px;
+    transition:stroke-dashoffset .28s linear, stroke .3s;
+  }
+  .ring-tick{stroke:var(--fg-muted); stroke-width:2; opacity:0.6;}
+
+  .radar-sweep{
+    position:absolute; inset:8%;
+    border-radius:50%;
+    background:conic-gradient(from 0deg, transparent 0deg, color-mix(in srgb, var(--tier-color) 40%, transparent) 6deg, transparent 26deg);
+    opacity:0.55;
+    animation:sweep-rotate 4.5s linear infinite;
+    pointer-events:none;
+  }
+  @keyframes sweep-rotate{ to{ transform:rotate(360deg);} }
+
+  .hud-corner{ position:absolute; width:26px; height:26px; border-color:var(--tier-color); transition:border-color .3s; }
+  .hud-corner.tl{top:-8px;left:-8px;border-top:3px solid;border-left:3px solid;}
+  .hud-corner.tr{top:-8px;right:-8px;border-top:3px solid;border-right:3px solid;}
+  .hud-corner.bl{bottom:-8px;left:-8px;border-bottom:3px solid;border-left:3px solid;}
+  .hud-corner.br{bottom:-8px;right:-8px;border-bottom:3px solid;border-right:3px solid;}
+
+  .time-readout{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    gap:2px;
+  }
+  #timeDisplay{
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:clamp(3.2rem,19vmin,9.6rem);
+    line-height:0.95;
+    color:var(--tier-color);
+    font-variant-numeric:tabular-nums;
+    letter-spacing:0.01em;
+    transition:color .3s;
+  }
+  #overtimeLabel{
+    font-family:var(--font-mono);
+    font-size:0.84rem;
+    letter-spacing:0.14em;
+    color:var(--tier-color);
+    opacity:0;
+    transition:opacity .3s;
+  }
+  [data-tier="overtime"] #overtimeLabel{opacity:1;}
+
+  .flash #timeDisplay, .flash .ring-progress{
+    animation:pulse-flash 0.7s ease-in-out 2;
+  }
+  @keyframes pulse-flash{
+    0%,100%{filter:none;}
+    50%{filter:drop-shadow(0 0 20px var(--tier-color));}
+  }
+  [data-tier="finished"] .ring-wrap, [data-tier="overtime"] .ring-wrap{
+    animation:soft-pulse 1s ease-in-out infinite;
+  }
+  @keyframes soft-pulse{
+    0%,100%{transform:scale(1);}
+    50%{transform:scale(1.018);}
+  }
+
+  .controls{
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+    justify-content:center;
+  }
+  .ctrl-btn{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    border:1px solid var(--border);
+    background:var(--bg-panel);
+    color:var(--fg);
+    padding:11px 18px;
+    font-family:var(--font-mono);
+    font-size:0.84rem;
+    letter-spacing:0.03em;
+    font-weight:600;
+    cursor:pointer;
+    box-shadow:var(--shadow);
+  }
+  .ctrl-btn:hover{border-color:var(--tier-color); color:var(--tier-color);}
+  .ctrl-btn.icon-only{padding:11px;}
+  .ctrl-btn svg{width:18px; height:18px; display:block;}
+  .ctrl-btn.alarm{
+    background:var(--alert);
+    border-color:var(--alert);
+    color:#1A0000;
+  }
+  .ctrl-btn.alarm:hover{color:#1A0000; filter:brightness(1.1);}
+
+  [hidden]{display:none !important;}
+
+  @media (prefers-reduced-motion: reduce){
+    .flash #timeDisplay, .flash .ring-progress,
+    [data-tier="finished"] .ring-wrap, [data-tier="overtime"] .ring-wrap,
+    .radar-sweep, .hazard-bar, #alertOverlay.klaxon-flash{
+      animation:none !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="alertOverlay" aria-hidden="true"></div>
+
+<div id="app">
+  <div class="eyebrow">
+    <span class="eyebrow-left"><span class="dot" aria-hidden="true"></span>MONITOR SYSTEM</span>
+    <span id="clockEyebrow"></span>
+  </div>
+
+  <section id="setupView">
+    <div>
+      <div class="mono-eyebrow">COUNTDOWN SEQUENCE — SETUP</div>
+      <h1>発表時間を設定</h1>
+      <p class="lead">残り時間を常時表示し、警戒レベルに応じて表示が変化します。ゼロで警報が鳴ります。</p>
+    </div>
+
+    <div class="card" style="--panel-accent:var(--standby);">
+      <div class="field-label">発表時間</div>
+      <div class="presets" id="presetRow">
+        <button type="button" class="preset-btn" data-min="3">3分</button>
+        <button type="button" class="preset-btn" data-min="5">5分</button>
+        <button type="button" class="preset-btn" data-min="10">10分</button>
+        <button type="button" class="preset-btn" data-min="15">15分</button>
+        <button type="button" class="preset-btn" data-min="20">20分</button>
+      </div>
+      <div class="duration-row">
+        <div class="num-field">
+          <input type="number" id="durMin" min="0" max="180" value="5" inputmode="numeric">
+          <span>分</span>
+        </div>
+        <span class="sep">:</span>
+        <div class="num-field">
+          <input type="number" id="durSec" min="0" max="59" value="0" inputmode="numeric">
+          <span>秒</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="--panel-accent:var(--warn);">
+      <div class="field-label">目立たせるタイミング</div>
+      <div class="field-hint">残り時間がこの時点になると、警戒レベルが上がります。</div>
+      <div class="chip-list" id="thresholdChips"></div>
+      <div class="add-threshold">
+        <div class="num-field">
+          <input type="number" id="thMin" min="0" max="180" value="1" inputmode="numeric">
+          <span>分</span>
+        </div>
+        <div class="num-field">
+          <input type="number" id="thSec" min="0" max="59" value="0" inputmode="numeric">
+          <span>秒</span>
+        </div>
+        <button type="button" id="addThresholdBtn">追加</button>
+      </div>
+    </div>
+
+    <button type="button" class="primary-btn clip-corner" id="startBtn">
+      <span class="main">起動</span>
+      <span class="sub">START COUNTDOWN</span>
+    </button>
+    <div class="secondary-row">
+      <button type="button" class="ghost-btn" id="testSoundBtn">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 10v1a7 7 0 0 1-14 0v-1H3v1a9 9 0 0 0 8 8.94V22h2v-2.06A9 9 0 0 0 21 11v-1h-2z"></path></svg>
+        警報音をテスト再生
+      </button>
+    </div>
+  </section>
+
+  <section id="stageView" hidden>
+    <div class="hazard-bar" aria-hidden="true"></div>
+
+    <div class="status-block">
+      <div class="status-pill" id="statusPill">監視中</div>
+      <div class="tier-label" id="tierLabel">正常</div>
+    </div>
+
+    <div class="ring-wrap" id="ringWrap">
+      <div class="hud-corner tl"></div>
+      <div class="hud-corner tr"></div>
+      <div class="hud-corner bl"></div>
+      <div class="hud-corner br"></div>
+      <div class="radar-sweep" aria-hidden="true"></div>
+      <svg viewBox="0 0 200 200" aria-hidden="true">
+        <circle class="ring-track" cx="100" cy="100" r="90"></circle>
+        <g id="ticksGroup"></g>
+        <circle class="ring-progress" id="ringProgress" cx="100" cy="100" r="90"></circle>
+      </svg>
+      <div class="time-readout">
+        <div id="timeDisplay">5:00</div>
+        <div id="overtimeLabel">制限時間超過</div>
+      </div>
+    </div>
+
+    <div class="hazard-bar" aria-hidden="true"></div>
+
+    <div class="controls">
+      <button type="button" class="ctrl-btn clip-corner" id="pauseResumeBtn">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path id="pauseIcon" d="M6 5h4v14H6zM14 5h4v14h-4z"></path></svg>
+        <span id="pauseResumeLabel">一時停止</span>
+      </button>
+      <button type="button" class="ctrl-btn clip-corner" id="resetBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg>
+        <span>リセット</span>
+      </button>
+      <button type="button" class="ctrl-btn icon-only clip-corner" id="fullscreenBtn" aria-label="全画面表示を切り替え">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"></path></svg>
+      </button>
+      <button type="button" class="ctrl-btn alarm clip-corner" id="stopSoundBtn" hidden>
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 10v1a7 7 0 0 1-14 0v-1H3v1a9 9 0 0 0 8 8.94V22h2v-2.06A9 9 0 0 0 21 11v-1h-2z"></path></svg>
+        <span>警報を停止</span>
+      </button>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var STORAGE_KEY = "presentationTimerSettings.v1";
+  var CIRC = 2 * Math.PI * 90;
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var alertOverlay = document.getElementById("alertOverlay");
+  var setupView = document.getElementById("setupView");
+  var stageView = document.getElementById("stageView");
+  var durMinEl = document.getElementById("durMin");
+  var durSecEl = document.getElementById("durSec");
+  var thMinEl = document.getElementById("thMin");
+  var thSecEl = document.getElementById("thSec");
+  var presetRow = document.getElementById("presetRow");
+  var thresholdChipsEl = document.getElementById("thresholdChips");
+  var addThresholdBtn = document.getElementById("addThresholdBtn");
+  var startBtn = document.getElementById("startBtn");
+  var testSoundBtn = document.getElementById("testSoundBtn");
+
+  var statusPill = document.getElementById("statusPill");
+  var tierLabelEl = document.getElementById("tierLabel");
+  var timeDisplay = document.getElementById("timeDisplay");
+  var ringWrap = document.getElementById("ringWrap");
+  var ringProgress = document.getElementById("ringProgress");
+  var ticksGroup = document.getElementById("ticksGroup");
+  var pauseResumeBtn = document.getElementById("pauseResumeBtn");
+  var pauseResumeLabel = document.getElementById("pauseResumeLabel");
+  var pauseIcon = document.getElementById("pauseIcon");
+  var resetBtn = document.getElementById("resetBtn");
+  var fullscreenBtn = document.getElementById("fullscreenBtn");
+  var stopSoundBtn = document.getElementById("stopSoundBtn");
+
+  var thresholds = [180, 120]; // seconds, default 3分・2分
+  var durationSec = 300;
+
+  try{
+    var saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    if(saved && typeof saved.durationSec === "number" && Array.isArray(saved.thresholds)){
+      durationSec = saved.durationSec;
+      thresholds = saved.thresholds;
+    }
+  }catch(e){}
+
+  function secToMin(s){ return Math.floor(s/60); }
+  function secToRem(s){ return s % 60; }
+
+  durMinEl.value = secToMin(durationSec);
+  durSecEl.value = secToRem(durationSec);
+
+  function renderChips(){
+    thresholdChipsEl.innerHTML = "";
+    thresholds.slice().sort(function(a,b){return b-a;}).forEach(function(t){
+      var chip = document.createElement("div");
+      chip.className = "chip clip-corner";
+      var label = document.createElement("span");
+      label.textContent = "残り " + formatClock(t);
+      var rm = document.createElement("button");
+      rm.type = "button";
+      rm.setAttribute("aria-label", "このタイミングを削除");
+      rm.textContent = "×";
+      rm.addEventListener("click", function(){
+        thresholds = thresholds.filter(function(x){ return x !== t; });
+        renderChips();
+      });
+      chip.appendChild(label);
+      chip.appendChild(rm);
+      thresholdChipsEl.appendChild(chip);
+    });
+  }
+  renderChips();
+
+  function currentDurationInputSec(){
+    var m = parseInt(durMinEl.value, 10) || 0;
+    var s = parseInt(durSecEl.value, 10) || 0;
+    return Math.max(0, m*60 + s);
+  }
+
+  function syncPresetActive(){
+    var total = currentDurationInputSec();
+    var mins = total % 60 === 0 ? total/60 : -1;
+    Array.prototype.forEach.call(presetRow.children, function(btn){
+      btn.classList.toggle("active", parseInt(btn.dataset.min,10) === mins);
+    });
+  }
+  durMinEl.addEventListener("input", syncPresetActive);
+  durSecEl.addEventListener("input", syncPresetActive);
+  syncPresetActive();
+
+  presetRow.addEventListener("click", function(e){
+    var btn = e.target.closest(".preset-btn");
+    if(!btn) return;
+    durMinEl.value = btn.dataset.min;
+    durSecEl.value = 0;
+    syncPresetActive();
+  });
+
+  addThresholdBtn.addEventListener("click", function(){
+    var m = parseInt(thMinEl.value, 10) || 0;
+    var s = parseInt(thSecEl.value, 10) || 0;
+    var total = m*60 + s;
+    if(total <= 0) return;
+    if(thresholds.indexOf(total) === -1){
+      thresholds.push(total);
+      renderChips();
+    }
+  });
+
+  function formatClock(totalSec){
+    var m = Math.floor(totalSec/60);
+    var s = totalSec % 60;
+    return m + ":" + (s<10 ? "0"+s : s);
+  }
+
+  // ---------- Audio: two-tone alert siren ----------
+  var audioCtx = null;
+  var sirenOsc = null, sirenGain = null;
+  function ensureAudioCtx(){
+    if(!audioCtx){
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if(Ctx) audioCtx = new Ctx();
+    }
+    if(audioCtx && audioCtx.state === "suspended"){
+      audioCtx.resume();
+    }
+    return audioCtx;
+  }
+  function stopChime(){
+    if(sirenOsc && audioCtx){
+      try{
+        var now = audioCtx.currentTime;
+        sirenGain.gain.cancelScheduledValues(now);
+        sirenGain.gain.setValueAtTime(Math.max(sirenGain.gain.value,0.0001), now);
+        sirenGain.gain.linearRampToValueAtTime(0.0001, now+0.08);
+        sirenOsc.stop(now+0.1);
+      }catch(e){}
+    }
+    sirenOsc = null; sirenGain = null;
+  }
+  function playSiren(duration){
+    var ctx = ensureAudioCtx();
+    if(!ctx) return;
+    stopChime();
+    var now = ctx.currentTime;
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.16, now+0.08);
+    var step = 0.35;
+    var t = now;
+    var toggle = true;
+    osc.frequency.setValueAtTime(760, now);
+    while(t < now+duration){
+      osc.frequency.linearRampToValueAtTime(toggle?880:640, t+step);
+      toggle = !toggle;
+      t += step;
+    }
+    gain.gain.setValueAtTime(0.16, now+Math.max(0,duration-0.15));
+    gain.gain.linearRampToValueAtTime(0.0001, now+duration);
+    osc.start(now);
+    osc.stop(now+duration+0.05);
+    sirenOsc = osc; sirenGain = gain;
+  }
+
+  testSoundBtn.addEventListener("click", function(){
+    ensureAudioCtx();
+    playSiren(1.6);
+  });
+
+  // ---------- Timer state ----------
+  var mode = "setup"; // setup | running | paused | finished | overtime
+  var targetTime = 0;
+  var remainingAtPause = 0;
+  var rafId = null;
+  var activeThresholds = [];
+  var activeDuration = 300;
+  var chimePlayed = false;
+
+  function buildTicks(){
+    ticksGroup.innerHTML = "";
+    activeThresholds.forEach(function(t){
+      if(t <= 0 || t >= activeDuration) return;
+      var angle = (t/activeDuration) * 360;
+      var rad = (angle - 90) * Math.PI/180;
+      var r1 = 80, r2 = 100;
+      var x1 = 100 + r1*Math.cos(rad), y1 = 100 + r1*Math.sin(rad);
+      var x2 = 100 + r2*Math.cos(rad), y2 = 100 + r2*Math.sin(rad);
+      var line = document.createElementNS("http://www.w3.org/2000/svg","line");
+      line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+      line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+      line.setAttribute("class","ring-tick");
+      ticksGroup.appendChild(line);
+    });
+  }
+
+  function tierFor(remaining){
+    if(mode === "overtime" || mode === "finished") return "finished";
+    var crossed = activeThresholds.filter(function(t){ return remaining <= t; }).length;
+    if(crossed >= 2) return "critical";
+    if(crossed === 1) return "warn";
+    return "normal";
+  }
+
+  var TIER_WORD = {normal:"正常", warn:"注意", critical:"危険", finished:"制限時間超過"};
+
+  var lastTier = null;
+  function applyTier(tier){
+    stageView.dataset.tier = tier;
+    var colorVar = tier === "normal" ? "var(--standby)"
+      : tier === "warn" ? "var(--warn)"
+      : tier === "critical" ? "var(--critical)"
+      : "var(--alert)";
+    stageView.style.setProperty("--tier-color", colorVar);
+    tierLabelEl.textContent = TIER_WORD[tier] || "";
+    if(tier !== lastTier && lastTier !== null && !reduceMotion){
+      ringWrap.classList.remove("flash");
+      void ringWrap.offsetWidth;
+      ringWrap.classList.add("flash");
+    }
+    lastTier = tier;
+  }
+
+  function updateDisplay(remaining){
+    var tier = tierFor(remaining);
+    applyTier(tier);
+
+    if(mode === "overtime"){
+      var over = Math.max(0, Math.round((Date.now() - targetTime)/1000));
+      timeDisplay.textContent = "+" + formatClock(over);
+      ringProgress.style.strokeDashoffset = 0;
+    } else {
+      var clamped = Math.max(0, remaining);
+      timeDisplay.textContent = formatClock(Math.ceil(clamped));
+      var frac = activeDuration > 0 ? clamped/activeDuration : 0;
+      var offset = CIRC * (1 - frac);
+      ringProgress.style.strokeDashoffset = Math.min(CIRC, Math.max(0, offset));
+    }
+  }
+
+  function loop(){
+    if(mode === "running"){
+      var remaining = (targetTime - Date.now())/1000;
+      if(remaining <= 0){
+        if(!chimePlayed){
+          chimePlayed = true;
+          playSiren(4.5);
+          stopSoundBtn.hidden = false;
+          if(!reduceMotion){
+            alertOverlay.classList.add("klaxon-flash");
+            setTimeout(function(){ alertOverlay.classList.remove("klaxon-flash"); }, 2900);
+          }
+        }
+        mode = "overtime";
+        statusPill.textContent = "警報";
+        updateDisplay(0);
+      } else {
+        updateDisplay(remaining);
+      }
+    } else if(mode === "overtime"){
+      updateDisplay(0);
+    }
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function startCountdown(){
+    activeDuration = currentDurationInputSec();
+    if(activeDuration <= 0){ return; }
+    activeThresholds = thresholds.filter(function(t){ return t > 0 && t < activeDuration; });
+
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({durationSec: activeDuration, thresholds: thresholds}));
+    }catch(e){}
+
+    ensureAudioCtx();
+    buildTicks();
+
+    mode = "running";
+    chimePlayed = false;
+    lastTier = null;
+    targetTime = Date.now() + activeDuration*1000;
+
+    statusPill.textContent = "監視中";
+    pauseResumeLabel.textContent = "一時停止";
+    pauseIcon.setAttribute("d","M6 5h4v14H6zM14 5h4v14h-4z");
+    stopSoundBtn.hidden = true;
+
+    setupView.hidden = true;
+    stageView.hidden = false;
+    updateDisplay(activeDuration);
+
+    if(rafId) cancelAnimationFrame(rafId);
+    loop();
+  }
+
+  function pauseCountdown(){
+    if(mode !== "running") return;
+    remainingAtPause = Math.max(0, (targetTime - Date.now())/1000);
+    mode = "paused";
+    statusPill.textContent = "待機中";
+    pauseResumeLabel.textContent = "再開";
+    pauseIcon.setAttribute("d","M8 5l11 7-11 7z");
+    if(rafId) cancelAnimationFrame(rafId);
+    updateDisplay(remainingAtPause);
+  }
+
+  function resumeCountdown(){
+    if(mode !== "paused") return;
+    targetTime = Date.now() + remainingAtPause*1000;
+    mode = "running";
+    statusPill.textContent = "監視中";
+    pauseResumeLabel.textContent = "一時停止";
+    pauseIcon.setAttribute("d","M6 5h4v14H6zM14 5h4v14h-4z");
+    loop();
+  }
+
+  function backToSetup(){
+    if(rafId) cancelAnimationFrame(rafId);
+    stopChime();
+    mode = "setup";
+    stopSoundBtn.hidden = true;
+    stageView.hidden = true;
+    setupView.hidden = false;
+  }
+
+  startBtn.addEventListener("click", startCountdown);
+
+  pauseResumeBtn.addEventListener("click", function(){
+    if(mode === "running") pauseCountdown();
+    else if(mode === "paused") resumeCountdown();
+  });
+
+  resetBtn.addEventListener("click", function(){
+    if(mode === "running" || mode === "paused"){
+      var ok = window.confirm("タイマーをリセットして設定画面に戻りますか？");
+      if(!ok) return;
+    }
+    backToSetup();
+  });
+
+  stopSoundBtn.addEventListener("click", function(){
+    stopChime();
+    stopSoundBtn.hidden = true;
+  });
+
+  fullscreenBtn.addEventListener("click", function(){
+    var el = document.getElementById("app");
+    if(!document.fullscreenElement){
+      if(el.requestFullscreen) el.requestFullscreen();
+    } else {
+      if(document.exitFullscreen) document.exitFullscreen();
+    }
+  });
+
+  document.addEventListener("keydown", function(e){
+    if(stageView.hidden) return;
+    if(e.code === "Space"){
+      e.preventDefault();
+      if(mode === "running") pauseCountdown();
+      else if(mode === "paused") resumeCountdown();
+    }
+  });
+
+  var clockEl = document.getElementById("clockEyebrow");
+  function updateClock(){
+    var d = new Date();
+    var hh = d.getHours(), mm = d.getMinutes();
+    clockEl.textContent = (hh<10?"0"+hh:hh) + ":" + (mm<10?"0"+mm:mm);
+  }
+  updateClock();
+  setInterval(updateClock, 15000);
+})();
+</script>
+
+</body>
+</html>
