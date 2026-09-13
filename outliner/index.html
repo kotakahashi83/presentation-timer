@@ -1,0 +1,1094 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<meta name="color-scheme" content="light dark">
+<title>アウトライナー</title>
+<style>
+  :root{
+    --bg:#f6f6f3;
+    --panel:#ffffff;
+    --fg:#1e1e1c;
+    --fg-muted:#7b7b74;
+    --border:#e3e3de;
+    --accent:#2f7de1;
+    --accent-soft:rgba(47,125,225,0.12);
+    --danger:#d8412f;
+    --shadow:0 10px 30px rgba(0,0,0,0.14);
+
+    --top-h:52px;
+    --indent:24px;
+    --row-h:40px;
+    --handle-w:28px;
+    --bullet-w:26px;
+    --toolbar-h:56px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#141517;
+      --panel:#1c1e21;
+      --fg:#ececea;
+      --fg-muted:#8f8f89;
+      --border:#2c2f34;
+      --accent:#5b9cf0;
+      --accent-soft:rgba(91,156,240,0.18);
+      --danger:#f0705f;
+      --shadow:0 10px 30px rgba(0,0,0,0.55);
+    }
+  }
+
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--fg);
+    font:16px/1.5 system-ui,-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic UI","Yu Gothic",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overscroll-behavior-y:contain;
+  }
+  button{font-family:inherit;font-size:inherit;color:inherit;}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  /* ---- top bar ---- */
+  #topbar{
+    position:sticky;top:0;z-index:30;
+    display:flex;align-items:center;gap:6px;
+    height:var(--top-h);padding:0 10px;
+    background:var(--panel);border-bottom:1px solid var(--border);
+  }
+  .icon-btn{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:44px;height:44px;border:0;border-radius:10px;background:transparent;cursor:pointer;
+    color:var(--fg);
+  }
+  .icon-btn:hover{background:var(--accent-soft);}
+  .icon-btn svg{width:22px;height:22px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  #menuBtn{display:none;}
+  #projectTitle{
+    flex:1;min-width:0;margin:0;
+    font-size:17px;font-weight:700;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  #moreMenu{position:relative;}
+  #moreMenu summary{list-style:none;cursor:pointer;}
+  #moreMenu summary::-webkit-details-marker{display:none;}
+  #moreMenu summary::marker{content:"";}
+  .menu-panel{
+    position:absolute;right:0;top:48px;min-width:220px;
+    background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    box-shadow:var(--shadow);padding:6px;z-index:40;
+  }
+  .menu-panel button{
+    display:block;width:100%;text-align:left;
+    padding:10px 12px;border:0;border-radius:8px;background:transparent;cursor:pointer;
+  }
+  .menu-panel button:hover{background:var(--accent-soft);}
+
+  /* ---- layout ---- */
+  .app{display:grid;grid-template-columns:240px minmax(0,1fr);}
+  #sidebar{
+    position:sticky;top:var(--top-h);
+    height:calc(100vh - var(--top-h));
+    display:flex;flex-direction:column;
+    background:var(--panel);border-right:1px solid var(--border);
+    overflow:auto;
+  }
+  .sidebar-head{
+    padding:14px 14px 6px;font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--fg-muted);
+  }
+  #projectList{list-style:none;margin:0;padding:0 8px;}
+  .project{display:flex;align-items:center;border-radius:8px;}
+  .project.active{background:var(--accent-soft);}
+  .project .pname{
+    flex:1;min-width:0;text-align:left;
+    padding:10px 10px;border:0;background:transparent;cursor:pointer;border-radius:8px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .project .pedit,.project .pdel{
+    width:32px;height:36px;border:0;background:transparent;cursor:pointer;border-radius:8px;
+    color:var(--fg-muted);opacity:0;flex:none;
+  }
+  .project:hover .pedit,.project:hover .pdel,.project.active .pedit,.project.active .pdel{opacity:1;}
+  .project .pdel:hover{color:var(--danger);}
+  .project .prename{
+    flex:1;min-width:0;margin:4px;padding:8px;font:inherit;
+    border:1px solid var(--accent);border-radius:8px;background:var(--bg);color:inherit;
+  }
+  #addProject{
+    margin:8px;padding:10px 12px;text-align:left;
+    border:1px dashed var(--border);border-radius:8px;background:transparent;cursor:pointer;color:var(--fg-muted);
+  }
+  #addProject:hover{color:var(--fg);border-color:var(--accent);}
+  .sidebar-foot{margin-top:auto;padding:12px 14px;font-size:12px;color:var(--fg-muted);}
+  #backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:39;display:none;}
+  #backdrop.open{display:block;}
+
+  #main{position:relative;padding:14px 14px 120px;}
+  #list{max-width:840px;}
+
+  /* ---- rows ---- */
+  .item{
+    display:flex;align-items:flex-start;
+    padding-left:calc(var(--d,0) * var(--indent));
+    border-radius:8px;
+  }
+  .item.dragging{opacity:.35;}
+  .handle{
+    flex:none;width:var(--handle-w);height:var(--row-h);
+    display:flex;align-items:center;justify-content:center;
+    border:0;padding:0;background:transparent;color:var(--fg-muted);
+    cursor:grab;touch-action:none;
+    user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+    opacity:.35;
+  }
+  .handle svg{width:14px;height:18px;fill:currentColor;}
+  .item:hover .handle,.item:focus-within .handle{opacity:.85;}
+  .bullet{
+    flex:none;width:var(--bullet-w);height:var(--row-h);
+    display:flex;align-items:center;justify-content:center;
+    border:0;padding:0;background:transparent;cursor:pointer;color:var(--fg);border-radius:50%;
+  }
+  .bullet::before{
+    content:"";width:7px;height:7px;border-radius:50%;background:currentColor;
+    box-shadow:0 0 0 0 transparent;transition:box-shadow .15s;
+  }
+  .item.has-children .bullet::before{box-shadow:0 0 0 4px var(--border);}
+  .item.collapsed .bullet::before{background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft);}
+  .bullet:hover::before{box-shadow:0 0 0 5px var(--accent-soft);}
+  .item textarea{
+    flex:1;min-width:0;display:block;
+    margin:0;padding:8px 6px;border:0;border-radius:6px;
+    font:inherit;font-size:16px;line-height:24px;
+    background:transparent;color:inherit;
+    resize:none;overflow:hidden;outline:none;
+    white-space:pre-wrap;overflow-wrap:anywhere;
+    field-sizing:content;
+  }
+  .item textarea:focus{background:var(--accent-soft);}
+  .item textarea::placeholder{color:var(--fg-muted);opacity:.6;}
+  #addItem{
+    margin:6px 0 0 calc(var(--handle-w) + var(--bullet-w));
+    padding:8px 6px;border:0;background:transparent;cursor:pointer;color:var(--fg-muted);
+  }
+  #addItem:hover{color:var(--accent);}
+
+  #dropIndicator{
+    position:absolute;height:3px;right:14px;border-radius:2px;
+    background:var(--accent);pointer-events:none;z-index:5;
+  }
+  #dropIndicator::before{
+    content:"";position:absolute;left:-6px;top:-4px;width:11px;height:11px;border-radius:50%;
+    background:var(--accent);
+  }
+  #ghost{
+    position:fixed;left:0;top:0;z-index:60;pointer-events:none;
+    max-width:60vw;padding:8px 12px;border-radius:8px;
+    background:var(--panel);color:var(--fg);border:1px solid var(--border);box-shadow:var(--shadow);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  body.is-dragging{user-select:none;-webkit-user-select:none;cursor:grabbing;}
+  body.is-dragging .handle{cursor:grabbing;}
+
+  /* ---- bottom toolbar (touch / narrow) ---- */
+  #toolbar{
+    position:fixed;left:0;right:0;bottom:0;z-index:35;
+    display:none;gap:2px;
+    padding:4px 6px calc(4px + env(safe-area-inset-bottom));
+    background:var(--panel);border-top:1px solid var(--border);
+    touch-action:manipulation;user-select:none;-webkit-user-select:none;
+  }
+  #toolbar button{
+    flex:1;min-width:40px;min-height:44px;
+    border:0;border-radius:10px;background:transparent;cursor:pointer;color:var(--fg);
+    display:flex;align-items:center;justify-content:center;
+  }
+  #toolbar button:disabled{opacity:.3;}
+  #toolbar button svg{width:22px;height:22px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  #toolbar button.danger{color:var(--danger);}
+
+  #toast{
+    position:fixed;left:50%;bottom:calc(var(--toolbar-h) + 24px);transform:translate(-50%,10px);
+    padding:10px 16px;border-radius:999px;background:var(--fg);color:var(--bg);
+    font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:70;
+  }
+  #toast.show{opacity:1;transform:translate(-50%,0);}
+
+  @media (max-width:720px){
+    :root{--indent:18px;}
+    .app{grid-template-columns:minmax(0,1fr);}
+    #menuBtn{display:inline-flex;}
+    #sidebar{
+      position:fixed;top:0;bottom:0;left:0;height:auto;
+      width:min(82vw,320px);z-index:40;
+      transform:translateX(-100%);transition:transform .2s ease;
+    }
+    #sidebar.open{transform:none;box-shadow:var(--shadow);}
+    .project .pedit,.project .pdel{opacity:1;}
+    #main{padding:10px 10px calc(var(--toolbar-h) + 140px);}
+    #dropIndicator{right:10px;}
+    #toolbar{display:flex;}
+  }
+  @media (pointer:coarse){
+    #toolbar{display:flex;}
+    #main{padding-bottom:calc(var(--toolbar-h) + 140px);}
+    .handle{opacity:.6;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;animation:none !important;}
+  }
+</style>
+</head>
+<body>
+
+<header id="topbar">
+  <button id="menuBtn" class="icon-btn" type="button" aria-label="プロジェクト一覧を開く" aria-controls="sidebar" aria-expanded="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+  <h1 id="projectTitle">アウトライナー</h1>
+  <details id="moreMenu">
+    <summary class="icon-btn" aria-label="メニュー">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+    </summary>
+    <div class="menu-panel">
+      <button id="btnCopy" type="button">テキストとしてコピー</button>
+      <button id="btnExport" type="button">JSON を書き出し</button>
+      <button id="btnImport" type="button">JSON を読み込み</button>
+    </div>
+  </details>
+</header>
+
+<div class="app">
+  <aside id="sidebar" aria-label="プロジェクト">
+    <div class="sidebar-head">プロジェクト</div>
+    <ul id="projectList"></ul>
+    <button id="addProject" type="button">＋ 新規プロジェクト</button>
+    <div class="sidebar-foot">データはこの端末のブラウザに保存されます。</div>
+  </aside>
+  <div id="backdrop"></div>
+  <main id="main">
+    <div id="list" role="tree" aria-label="アウトライン"></div>
+    <button id="addItem" type="button">＋ 項目を追加</button>
+    <div id="dropIndicator" hidden></div>
+  </main>
+</div>
+
+<div id="toolbar" role="toolbar" aria-label="項目の操作">
+  <button type="button" data-cmd="outdent" aria-label="一階層上げる" title="一階層上げる (Shift+Tab)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 6h9M11 12h9M11 18h9M8 9l-4 3 4 3"/></svg>
+  </button>
+  <button type="button" data-cmd="indent" aria-label="一階層下げる" title="一階層下げる (Tab)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 6h9M11 12h9M11 18h9M4 9l4 3-4 3"/></svg>
+  </button>
+  <button type="button" data-cmd="moveUp" aria-label="上へ移動" title="上へ移動 (Alt+↑)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+  </button>
+  <button type="button" data-cmd="moveDown" aria-label="下へ移動" title="下へ移動 (Alt+↓)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+  </button>
+  <button type="button" data-cmd="toggle" aria-label="折りたたみ / 展開" title="折りたたみ / 展開 (Ctrl+.)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+  <button type="button" data-cmd="add" aria-label="項目を追加" title="項目を追加 (Enter)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+  <button type="button" class="danger" data-cmd="delete" aria-label="項目を削除" title="項目を削除">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3"/></svg>
+  </button>
+</div>
+
+<div id="ghost" hidden></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+
+<script>
+(function(){
+  'use strict';
+
+  /* ========== A. constants & helpers ========== */
+  const MAX_DEPTH = 4;
+  const STORAGE_KEY = 'outliner.v1';
+  const $ = (sel, root) => (root || document).querySelector(sel);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const uid = () => Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  function debounce(fn, ms){
+    let t = null;
+    const d = function(){ clearTimeout(t); t = setTimeout(() => { t = null; fn(); }, ms); };
+    d.flush = function(){ if (t) { clearTimeout(t); t = null; fn(); } };
+    return d;
+  }
+  const supportsFieldSizing = !!(window.CSS && CSS.supports && CSS.supports('field-sizing', 'content'));
+
+  const listEl = $('#list');
+  const mainEl = $('#main');
+  const indicator = $('#dropIndicator');
+  const ghost = $('#ghost');
+  const toolbar = $('#toolbar');
+  const sidebar = $('#sidebar');
+  const backdrop = $('#backdrop');
+  const menuBtn = $('#menuBtn');
+  const moreMenu = $('#moreMenu');
+  const importFile = $('#importFile');
+  const toastEl = $('#toast');
+
+  /* ========== B. state ========== */
+  function makeItem(text, depth){ return { id: uid(), text: text || '', depth: depth || 0, collapsed: false }; }
+
+  function DEFAULT_STATE(){
+    const rows = [
+      ['はじめてのプロジェクトへようこそ', 0],
+      ['Enter で新しい項目を作ります', 1],
+      ['Tab で一段下げ、Shift + Tab で一段上げ（最大 5 階層）', 1],
+      ['Alt + ↑ / ↓ で項目を上下に移動できます', 1],
+      ['左の ⋮⋮ をドラッグすると並べ替えられます（横にずらすと階層も変わります）', 1],
+      ['● をクリック / タップすると子項目を折りたたみます', 1],
+      ['折りたたまれた項目の例（● を押して展開）', 2],
+      ['ここは隠れていました', 3],
+      ['さらに深い階層', 4],
+      ['スマホでは画面下のボタンで階層の上げ下げや移動ができます', 1],
+      ['プロジェクトは左のメニュー（スマホは ☰）から追加・切替できます', 1],
+      ['データはこの端末のブラウザに保存されます。右上の ⋯ から書き出し・読み込みができます', 1]
+    ];
+    const items = rows.map(r => makeItem(r[0], r[1]));
+    items[6].collapsed = true;
+    const p = { id: uid(), name: 'はじめてのプロジェクト', items: items };
+    return { version: 1, activeProjectId: p.id, projects: [p] };
+  }
+
+  function normalizeProjects(list, seen){
+    seen = seen || new Set();
+    const fixId = (o) => { if (typeof o.id !== 'string' || !o.id || seen.has(o.id)) o.id = uid(); seen.add(o.id); };
+    if (!Array.isArray(list)) return [];
+    return list.filter(p => p && typeof p === 'object').map(p => {
+      fixId(p);
+      const name = (typeof p.name === 'string' && p.name.trim()) ? p.name.trim() : '無題のプロジェクト';
+      let prevDepth = -1;
+      let items = (Array.isArray(p.items) ? p.items : []).filter(it => it && typeof it === 'object').map(it => {
+        fixId(it);
+        const text = typeof it.text === 'string' ? it.text.replace(/\r?\n/g, ' ') : '';
+        let depth = Number.isInteger(it.depth) ? it.depth : 0;
+        depth = clamp(depth, 0, Math.min(MAX_DEPTH, prevDepth + 1));
+        prevDepth = depth;
+        return { id: it.id, text: text, depth: depth, collapsed: !!it.collapsed };
+      });
+      if (!items.length) items.push(makeItem());
+      return { id: p.id, name: name, items: items };
+    });
+  }
+
+  function normalize(raw){
+    const st = (raw && typeof raw === 'object') ? raw : {};
+    const projects = normalizeProjects(st.projects);
+    if (!projects.length) return DEFAULT_STATE();
+    const active = projects.some(p => p.id === st.activeProjectId) ? st.activeProjectId : projects[0].id;
+    return { version: 1, activeProjectId: active, projects: projects };
+  }
+
+  function load(){
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return DEFAULT_STATE();
+      return normalize(JSON.parse(raw));
+    } catch (e) { return DEFAULT_STATE(); }
+  }
+  function saveNow(){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  const saveSoon = debounce(saveNow, 300);
+
+  let state = load();
+  let activeId = null;
+  const rowsById = new Map();
+
+  function project(){
+    let p = state.projects.find(p => p.id === state.activeProjectId);
+    if (!p) { p = state.projects[0]; state.activeProjectId = p.id; }
+    return p;
+  }
+  function items(){ return project().items; }
+  function idxOf(id){ return items().findIndex(it => it.id === id); }
+
+  /* ========== C. pure tree operations on items[] ========== */
+  function subtreeEnd(its, i){ const d = its[i].depth; let j = i + 1; while (j < its.length && its[j].depth > d) j++; return j; }
+  function hasChildren(its, i){ return i + 1 < its.length && its[i + 1].depth > its[i].depth; }
+  function subtreeHeight(its, i){ const d = its[i].depth; let m = d; for (let j = i + 1; j < its.length && its[j].depth > d; j++) m = Math.max(m, its[j].depth); return m - d; }
+  function prevSibling(its, i){ const d = its[i].depth; for (let j = i - 1; j >= 0; j--) { if (its[j].depth < d) return -1; if (its[j].depth === d) return j; } return -1; }
+  function nextSibling(its, i){ const e = subtreeEnd(its, i); return (e < its.length && its[e].depth === its[i].depth) ? e : -1; }
+  function isVisible(its, i){
+    let cur = its[i].depth;
+    for (let j = i - 1; j >= 0 && cur > 0; j--) {
+      if (its[j].depth < cur) { if (its[j].collapsed) return false; cur = its[j].depth; }
+    }
+    return true;
+  }
+  function visibleIndices(its){
+    const out = []; let hideBelow = Infinity;
+    for (let i = 0; i < its.length; i++) {
+      const it = its[i];
+      if (it.depth > hideBelow) continue;
+      hideBelow = Infinity;
+      out.push(i);
+      if (it.collapsed && hasChildren(its, i)) hideBelow = it.depth;
+    }
+    return out;
+  }
+  function prevVisible(its, i){ for (let j = i - 1; j >= 0; j--) if (isVisible(its, j)) return j; return -1; }
+  function nextVisible(its, i){ for (let j = i + 1; j < its.length; j++) if (isVisible(its, j)) return j; return -1; }
+  function revealAncestors(its, i){
+    let cur = its[i].depth;
+    for (let j = i - 1; j >= 0 && cur > 0; j--) {
+      if (its[j].depth < cur) { its[j].collapsed = false; cur = its[j].depth; }
+    }
+  }
+  function canIndent(its, i){ return i > 0 && its[i].depth <= its[i - 1].depth && its[i].depth + subtreeHeight(its, i) + 1 <= MAX_DEPTH; }
+  function indent(its, i){ const e = subtreeEnd(its, i); for (let j = i; j < e; j++) its[j].depth++; revealAncestors(its, i); }
+  function canOutdent(its, i){ return its[i].depth > 0; }
+  function outdent(its, i){ const e = subtreeEnd(its, i); for (let j = i; j < e; j++) its[j].depth--; }
+
+  function splitItem(its, i, selStart, selEnd){
+    const it = its[i];
+    if (selStart === 0 && selEnd === 0 && it.text !== '') {
+      its.splice(i, 0, makeItem('', it.depth));
+      return { focus: i + 1, caret: 0 };
+    }
+    const a = it.text.slice(0, selStart), b = it.text.slice(selEnd);
+    it.text = a;
+    let idx, depth;
+    if (hasChildren(its, i) && !it.collapsed) { idx = i + 1; depth = it.depth + 1; }
+    else { idx = subtreeEnd(its, i); depth = it.depth; }
+    its.splice(idx, 0, makeItem(b, depth));
+    return { focus: idx, caret: 0 };
+  }
+  function deleteSubtree(its, i){ its.splice(i, subtreeEnd(its, i) - i); if (!its.length) its.push(makeItem()); }
+  function mergeWithPrev(its, i){
+    if (hasChildren(its, i)) return null;
+    const p = prevVisible(its, i); if (p < 0) return null;
+    const caret = its[p].text.length;
+    its[p].text += its[i].text;
+    its.splice(i, 1);
+    return { focus: p, caret: caret };
+  }
+  function moveSubtree(its, from, to, newDepth){
+    const block = its.splice(from, subtreeEnd(its, from) - from);
+    const delta = newDepth - block[0].depth;
+    block.forEach(b => { b.depth += delta; });
+    its.splice.apply(its, [to, 0].concat(block));
+  }
+  function moveUp(its, i){ const s = prevSibling(its, i); if (s < 0) return false; moveSubtree(its, i, s, its[i].depth); return true; }
+  function moveDown(its, i){
+    const s = nextSibling(its, i); if (s < 0) return false;
+    const len = subtreeEnd(its, i) - i;
+    moveSubtree(its, i, subtreeEnd(its, s) - len, its[i].depth);
+    return true;
+  }
+  function toPlainText(its){ return its.map(it => '  '.repeat(it.depth) + '- ' + it.text).join('\n'); }
+
+  /* ========== D. render ========== */
+  function createRow(it){
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.dataset.id = it.id;
+    row.setAttribute('role', 'treeitem');
+    row.innerHTML =
+      '<button class="handle" type="button" tabindex="-1" aria-label="ドラッグして移動">' +
+        '<svg viewBox="0 0 14 18" aria-hidden="true"><circle cx="4" cy="3" r="1.6"/><circle cx="10" cy="3" r="1.6"/><circle cx="4" cy="9" r="1.6"/><circle cx="10" cy="9" r="1.6"/><circle cx="4" cy="15" r="1.6"/><circle cx="10" cy="15" r="1.6"/></svg>' +
+      '</button>' +
+      '<button class="bullet" type="button" tabindex="-1" aria-label="折りたたみ / 展開"></button>' +
+      '<textarea rows="1" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="enter" placeholder="項目を入力" aria-label="項目"></textarea>';
+    return row;
+  }
+  function autosize(ta){
+    if (supportsFieldSizing) return;
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+  }
+  function renderList(){
+    const its = items();
+    const vis = visibleIndices(its);
+    const seen = new Set();
+    vis.forEach((i, k) => {
+      const it = its[i];
+      let row = rowsById.get(it.id);
+      const fresh = !row;
+      if (fresh) { row = createRow(it); rowsById.set(it.id, row); }
+      seen.add(it.id);
+      row.style.setProperty('--d', it.depth);
+      row.setAttribute('aria-level', String(it.depth + 1));
+      const hc = hasChildren(its, i);
+      row.classList.toggle('has-children', hc);
+      row.classList.toggle('collapsed', hc && it.collapsed);
+      if (hc) row.setAttribute('aria-expanded', it.collapsed ? 'false' : 'true'); else row.removeAttribute('aria-expanded');
+      const ta = row.querySelector('textarea');
+      let changed = false;
+      if (ta.value !== it.text) { ta.value = it.text; changed = true; }
+      const cur = listEl.children[k];
+      if (cur !== row) listEl.insertBefore(row, cur || null);
+      if (fresh || changed) autosize(ta);
+    });
+    while (listEl.children.length > vis.length) listEl.lastElementChild.remove();
+    rowsById.forEach((row, id) => { if (!seen.has(id)) rowsById.delete(id); });
+  }
+  function renderProjects(){
+    const ul = $('#projectList');
+    ul.innerHTML = '';
+    state.projects.forEach(p => {
+      const li = document.createElement('li');
+      li.className = 'project' + (p.id === state.activeProjectId ? ' active' : '');
+      li.dataset.id = p.id;
+      li.innerHTML =
+        '<button class="pname" type="button"></button>' +
+        '<button class="pedit" type="button" aria-label="名前を変更" title="名前を変更">✎</button>' +
+        '<button class="pdel" type="button" aria-label="削除" title="削除">✕</button>';
+      li.querySelector('.pname').textContent = p.name;
+      if (p.id === state.activeProjectId) li.querySelector('.pname').setAttribute('aria-current', 'true');
+      ul.appendChild(li);
+    });
+    $('#projectTitle').textContent = project().name;
+    document.title = project().name + ' - アウトライナー';
+  }
+  function renderToolbarState(){
+    const its = items();
+    const i = activeId ? idxOf(activeId) : -1;
+    const has = i >= 0;
+    const set = (cmd, on) => { const b = toolbar.querySelector('[data-cmd="' + cmd + '"]'); if (b) b.disabled = !on; };
+    set('indent', has && canIndent(its, i));
+    set('outdent', has && canOutdent(its, i));
+    set('moveUp', has && prevSibling(its, i) >= 0);
+    set('moveDown', has && nextSibling(its, i) >= 0);
+    set('toggle', has && hasChildren(its, i));
+    set('add', true);
+    set('delete', has);
+  }
+  function render(){ renderProjects(); renderList(); renderToolbarState(); }
+
+  /* ========== E. focus ========== */
+  function focusItem(id, caret){
+    const row = rowsById.get(id); if (!row) return;
+    const ta = row.querySelector('textarea');
+    if (document.activeElement !== ta) ta.focus({ preventScroll: true });
+    const len = ta.value.length;
+    const pos = (caret === 'end' || caret === undefined || caret === null) ? len : clamp(caret, 0, len);
+    try { ta.setSelectionRange(pos, pos); } catch (e) {}
+    try { row.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+    activeId = id;
+    renderToolbarState();
+  }
+  function commit(focusId, caret){
+    render();
+    if (focusId) focusItem(focusId, caret);
+    saveNow();
+  }
+  function currentCaret(){
+    const el = document.activeElement;
+    return (el && el.tagName === 'TEXTAREA' && el.closest('.item')) ? el.selectionStart : 'end';
+  }
+
+  /* ========== F. editing commands ========== */
+  const cmd = {
+    enter(id, selStart, selEnd){
+      const its = items(); const i = idxOf(id); if (i < 0) return;
+      const r = splitItem(its, i, selStart, selEnd);
+      commit(its[r.focus].id, r.caret);
+    },
+    indent(id, caret){
+      const its = items(); const i = idxOf(id); if (i < 0 || !canIndent(its, i)) return;
+      indent(its, i); commit(id, caret);
+    },
+    outdent(id, caret){
+      const its = items(); const i = idxOf(id); if (i < 0 || !canOutdent(its, i)) return;
+      outdent(its, i); commit(id, caret);
+    },
+    backspace(id){
+      const its = items(); const i = idxOf(id); if (i < 0) return;
+      const it = its[i];
+      if (hasChildren(its, i)) return;
+      if (it.text === '') {
+        if (its.length === 1) return;
+        const p = prevVisible(its, i);
+        deleteSubtree(its, i);
+        if (p >= 0) commit(its[p].id, 'end'); else commit(its[0].id, 0);
+      } else {
+        const r = mergeWithPrev(its, i); if (!r) return;
+        commit(its[r.focus].id, r.caret);
+      }
+    },
+    moveUp(id, caret){ const its = items(); const i = idxOf(id); if (i >= 0 && moveUp(its, i)) commit(id, caret); },
+    moveDown(id, caret){ const its = items(); const i = idxOf(id); if (i >= 0 && moveDown(its, i)) commit(id, caret); },
+    toggle(id){
+      const its = items(); const i = idxOf(id); if (i < 0 || !hasChildren(its, i)) return;
+      its[i].collapsed = !its[i].collapsed;
+      let focus = null;
+      if (its[i].collapsed && activeId) {
+        const a = idxOf(activeId);
+        if (a > i && a < subtreeEnd(its, i)) focus = id;
+      }
+      render();
+      if (focus) focusItem(focus, 'end'); else renderToolbarState();
+      saveNow();
+    },
+    addBelow(id){
+      const its = items(); const i = id ? idxOf(id) : -1;
+      let idx, depth;
+      if (i < 0) { idx = its.length; depth = 0; }
+      else if (hasChildren(its, i) && !its[i].collapsed) { idx = i + 1; depth = its[i].depth + 1; }
+      else { idx = subtreeEnd(its, i); depth = its[i].depth; }
+      const n = makeItem('', depth);
+      its.splice(idx, 0, n);
+      commit(n.id, 0);
+    },
+    deleteItem(id){
+      const its = items(); const i = idxOf(id); if (i < 0) return;
+      if (hasChildren(its, i) && !confirm('子項目も含めて削除しますか？')) return;
+      const p = prevVisible(its, i);
+      deleteSubtree(its, i);
+      const f = p >= 0 ? its[p] : its[0];
+      commit(f.id, 'end');
+    }
+  };
+
+  /* ========== G. keyboard ========== */
+  let lastCompositionEnd = 0;
+  listEl.addEventListener('compositionend', () => { lastCompositionEnd = performance.now(); });
+
+  function textareaLineCount(ta){
+    const cs = getComputedStyle(ta);
+    const lh = parseFloat(cs.lineHeight) || 24;
+    const inner = ta.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    return Math.max(1, Math.round(inner / lh));
+  }
+  function navigate(id, up, col){
+    const its = items(); const i = idxOf(id); if (i < 0) return;
+    const j = up ? prevVisible(its, i) : nextVisible(its, i);
+    if (j < 0) return;
+    focusItem(its[j].id, Math.min(col, its[j].text.length));
+  }
+
+  listEl.addEventListener('keydown', (e) => {
+    const ta = e.target;
+    if (!(ta instanceof HTMLTextAreaElement)) return;
+    if (e.isComposing || e.keyCode === 229) return;
+    const row = ta.closest('.item'); if (!row) return;
+    const id = row.dataset.id;
+    const mod = e.ctrlKey || e.metaKey;
+
+    switch (e.key) {
+      case 'Enter':
+        e.preventDefault();
+        if (performance.now() - lastCompositionEnd < 50) return;
+        cmd.enter(id, ta.selectionStart, ta.selectionEnd);
+        return;
+      case 'Tab':
+        e.preventDefault();
+        if (e.shiftKey) cmd.outdent(id, ta.selectionStart); else cmd.indent(id, ta.selectionStart);
+        return;
+      case 'Backspace':
+        if (mod && e.shiftKey) { e.preventDefault(); cmd.deleteItem(id); return; }
+        if (ta.selectionStart === 0 && ta.selectionEnd === 0 && !mod && !e.altKey) { e.preventDefault(); cmd.backspace(id); }
+        return;
+      case 'ArrowUp':
+      case 'ArrowDown': {
+        const up = e.key === 'ArrowUp';
+        if (e.altKey) {
+          e.preventDefault();
+          if (up) cmd.moveUp(id, ta.selectionStart); else cmd.moveDown(id, ta.selectionStart);
+          return;
+        }
+        if (e.shiftKey || mod) return;
+        const single = textareaLineCount(ta) <= 1;
+        const atEdge = up ? (ta.selectionStart === 0) : (ta.selectionEnd === ta.value.length);
+        if (single || atEdge) { e.preventDefault(); navigate(id, up, ta.selectionStart); return; }
+        const before = ta.selectionStart;
+        requestAnimationFrame(() => {
+          if (document.activeElement === ta && ta.selectionStart === before) navigate(id, up, before);
+        });
+        return;
+      }
+      case 'Escape':
+        ta.blur();
+        return;
+      case '.':
+        if (mod) { e.preventDefault(); cmd.toggle(id); }
+        return;
+    }
+  });
+
+  listEl.addEventListener('input', (e) => {
+    const ta = e.target;
+    if (!(ta instanceof HTMLTextAreaElement)) return;
+    const row = ta.closest('.item'); if (!row) return;
+    const i = idxOf(row.dataset.id); if (i < 0) return;
+    if (ta.value.indexOf('\n') >= 0) {
+      const pos = ta.selectionStart;
+      const removedBefore = (ta.value.slice(0, pos).match(/\n/g) || []).length;
+      ta.value = ta.value.replace(/\n/g, '');
+      try { ta.setSelectionRange(pos - removedBefore, pos - removedBefore); } catch (err) {}
+    }
+    items()[i].text = ta.value;
+    autosize(ta);
+    saveSoon();
+  });
+
+  listEl.addEventListener('paste', (e) => {
+    const ta = e.target;
+    if (!(ta instanceof HTMLTextAreaElement)) return;
+    const cd = e.clipboardData || window.clipboardData; if (!cd) return;
+    const text = cd.getData('text');
+    if (!text || !/\r?\n/.test(text)) return;
+    e.preventDefault();
+    const row = ta.closest('.item'); if (!row) return;
+    const its = items(); const i = idxOf(row.dataset.id); if (i < 0) return;
+    const lines = text.split(/\r?\n/);
+    const a = ta.value.slice(0, ta.selectionStart), b = ta.value.slice(ta.selectionEnd);
+    const base = its[i].depth;
+    its[i].text = a + lines[0].replace(/^\s*[-*・•]\s*/, '').trim();
+    let idx = subtreeEnd(its, i);
+    let last = its[i];
+    lines.slice(1).forEach(line => {
+      if (!line.trim()) return;
+      const m = /^(\s*)(.*)$/.exec(line);
+      const lead = m[1].replace(/\t/g, '  ').length;
+      let d = base + Math.round(lead / 2);
+      d = clamp(d, 0, Math.min(MAX_DEPTH, its[idx - 1].depth + 1));
+      const n = makeItem(m[2].replace(/^[-*・•]\s*/, '').trim(), d);
+      its.splice(idx++, 0, n);
+      last = n;
+    });
+    if (b) last.text += b;
+    commit(last.id, 'end');
+  });
+
+  listEl.addEventListener('focusin', (e) => {
+    const row = e.target.closest && e.target.closest('.item');
+    if (row && e.target.tagName === 'TEXTAREA') { activeId = row.dataset.id; renderToolbarState(); }
+  });
+
+  listEl.addEventListener('click', (e) => {
+    const b = e.target.closest('.bullet');
+    if (b) { cmd.toggle(b.closest('.item').dataset.id); return; }
+  });
+
+  $('#addItem').addEventListener('click', () => { cmd.addBelow(null); });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (drag.active) { cancelDrag(); return; }
+      if (sidebar.classList.contains('open')) closeDrawer();
+      if (moreMenu.open) moreMenu.open = false;
+    }
+  });
+
+  /* ========== H. drag and drop (Pointer Events) ========== */
+  const drag = { active: false, id: null, ids: null, pointerId: null, handle: null,
+    startX: 0, startY: 0, lastX: 0, lastY: 0, rootDepth: 0, height: 0, target: null, raf: 0, scrollRaf: 0 };
+
+  function cssPx(name){ return parseFloat(getComputedStyle(listEl).getPropertyValue(name)) || 24; }
+
+  listEl.addEventListener('pointerdown', (e) => {
+    const h = e.target.closest('.handle'); if (!h) return;
+    if (e.button !== 0 || drag.handle) return;
+    e.preventDefault();
+    const row = h.closest('.item'); const id = row.dataset.id;
+    const its = items(); const i = idxOf(id); if (i < 0) return;
+    const ids = new Set();
+    for (let j = i, end = subtreeEnd(its, i); j < end; j++) ids.add(its[j].id);
+    drag.active = false; drag.id = id; drag.ids = ids; drag.pointerId = e.pointerId; drag.handle = h;
+    drag.startX = e.clientX; drag.startY = e.clientY; drag.lastX = e.clientX; drag.lastY = e.clientY;
+    drag.rootDepth = its[i].depth; drag.height = subtreeHeight(its, i); drag.target = null;
+    try { h.setPointerCapture(e.pointerId); } catch (err) {}
+    h.addEventListener('pointermove', onDragMove);
+    h.addEventListener('pointerup', onDragEnd);
+    h.addEventListener('pointercancel', onDragCancel);
+  });
+
+  function onDragMove(e){
+    if (e.pointerId !== drag.pointerId) return;
+    drag.lastX = e.clientX; drag.lastY = e.clientY;
+    if (!drag.active) {
+      if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < 6) return;
+      startDrag();
+    }
+    e.preventDefault();
+    scheduleUpdate();
+  }
+  function startDrag(){
+    drag.active = true;
+    document.body.classList.add('is-dragging');
+    drag.ids.forEach(id => { const r = rowsById.get(id); if (r) r.classList.add('dragging'); });
+    const i = idxOf(drag.id);
+    ghost.textContent = (i >= 0 && items()[i].text) || '（空の項目）';
+    ghost.hidden = false;
+  }
+  function scheduleUpdate(){ if (!drag.raf) drag.raf = requestAnimationFrame(updateTarget); }
+
+  function updateTarget(){
+    drag.raf = 0;
+    if (!drag.active) return;
+    const its = items();
+    const rows = Array.prototype.filter.call(listEl.children, r => !drag.ids.has(r.dataset.id));
+    const y = drag.lastY;
+    let k = 0;
+    for (; k < rows.length; k++) {
+      const rc = rows[k].getBoundingClientRect();
+      if (y < rc.top + rc.height / 2) break;
+    }
+    const prevRow = rows[k - 1] || null, nextRow = rows[k] || null;
+    const prev = prevRow ? its[idxOf(prevRow.dataset.id)] : null;
+    const next = nextRow ? its[idxOf(nextRow.dataset.id)] : null;
+    const minD = next ? next.depth : 0;
+    let maxD = prev ? prev.depth + 1 : 0;
+    maxD = Math.min(maxD, MAX_DEPTH - drag.height);
+
+    ghost.style.transform = 'translate(' + (drag.lastX + 14) + 'px,' + (drag.lastY - 18) + 'px)';
+
+    if (minD > maxD) { drag.target = null; indicator.hidden = true; autoScroll(); return; }
+    const ind = cssPx('--indent');
+    const nd = clamp(drag.rootDepth + Math.round((drag.lastX - drag.startX) / ind), minD, maxD);
+    drag.target = { nextId: next ? next.id : null, prevId: prev ? prev.id : null, depth: nd };
+
+    const mainRect = mainEl.getBoundingClientRect();
+    const listRect = listEl.getBoundingClientRect();
+    const top = nextRow ? nextRow.getBoundingClientRect().top : (prevRow ? prevRow.getBoundingClientRect().bottom : listRect.top);
+    indicator.style.top = (top - mainRect.top - 1) + 'px';
+    indicator.style.left = (listRect.left - mainRect.left + cssPx('--handle-w') + nd * ind) + 'px';
+    indicator.hidden = false;
+    autoScroll();
+  }
+  function autoScroll(){
+    const vv = window.visualViewport;
+    const top = vv ? vv.offsetTop : 0;
+    const h = vv ? vv.height : window.innerHeight;
+    const edge = 56;
+    let dy = 0;
+    if (drag.lastY < top + edge) dy = -Math.ceil((top + edge - drag.lastY) / 4);
+    else if (drag.lastY > top + h - edge) dy = Math.ceil((drag.lastY - (top + h - edge)) / 4);
+    if (!dy) return;
+    window.scrollBy(0, dy);
+    if (!drag.scrollRaf) drag.scrollRaf = requestAnimationFrame(() => { drag.scrollRaf = 0; if (drag.active) updateTarget(); });
+  }
+  function cleanupDrag(){
+    const h = drag.handle;
+    if (h) {
+      h.removeEventListener('pointermove', onDragMove);
+      h.removeEventListener('pointerup', onDragEnd);
+      h.removeEventListener('pointercancel', onDragCancel);
+      try { h.releasePointerCapture(drag.pointerId); } catch (e) {}
+    }
+    if (drag.ids) drag.ids.forEach(id => { const r = rowsById.get(id); if (r) r.classList.remove('dragging'); });
+    document.body.classList.remove('is-dragging');
+    indicator.hidden = true;
+    ghost.hidden = true;
+    if (drag.raf) cancelAnimationFrame(drag.raf);
+    if (drag.scrollRaf) cancelAnimationFrame(drag.scrollRaf);
+    drag.active = false; drag.handle = null; drag.ids = null; drag.target = null; drag.raf = 0; drag.scrollRaf = 0;
+  }
+  function cancelDrag(){ cleanupDrag(); }
+  function onDragCancel(e){ if (e.pointerId !== drag.pointerId) return; cancelDrag(); }
+  function onDragEnd(e){
+    if (e.pointerId !== drag.pointerId) return;
+    const wasActive = drag.active, t = drag.target, id = drag.id;
+    cleanupDrag();
+    if (!wasActive) { focusItem(id, 'end'); return; }
+    if (!t) return;
+    const its = items();
+    const from = idxOf(id); if (from < 0) return;
+    const block = its.splice(from, subtreeEnd(its, from) - from);
+    const to = t.nextId ? idxOf(t.nextId) : its.length;
+    const delta = t.depth - block[0].depth;
+    if (to === from && delta === 0) { its.splice.apply(its, [from, 0].concat(block)); return; }
+    if (t.prevId) { const p = its[idxOf(t.prevId)]; if (p && t.depth === p.depth + 1 && p.collapsed) p.collapsed = false; }
+    block.forEach(b => { b.depth += delta; });
+    its.splice.apply(its, [to, 0].concat(block));
+    render();
+    saveNow();
+    if (activeId === id) renderToolbarState();
+  }
+
+  /* ========== I. projects UI ========== */
+  function openDrawer(){ sidebar.classList.add('open'); backdrop.classList.add('open'); menuBtn.setAttribute('aria-expanded', 'true'); }
+  function closeDrawer(){ sidebar.classList.remove('open'); backdrop.classList.remove('open'); menuBtn.setAttribute('aria-expanded', 'false'); }
+  menuBtn.addEventListener('click', () => { if (sidebar.classList.contains('open')) closeDrawer(); else openDrawer(); });
+  backdrop.addEventListener('click', closeDrawer);
+
+  function switchProject(id){
+    if (!state.projects.some(p => p.id === id)) return;
+    state.activeProjectId = id; activeId = null;
+    closeDrawer(); render(); saveNow();
+    window.scrollTo(0, 0);
+  }
+  function addProject(){
+    const p = { id: uid(), name: '新しいプロジェクト', items: [makeItem()] };
+    state.projects.push(p);
+    state.activeProjectId = p.id; activeId = null;
+    render(); saveNow();
+    startRename(p.id);
+  }
+  function deleteProject(id){
+    const p = state.projects.find(p => p.id === id); if (!p) return;
+    if (!confirm('「' + p.name + '」を削除しますか？この操作は取り消せません。')) return;
+    state.projects = state.projects.filter(q => q.id !== id);
+    if (!state.projects.length) state.projects.push({ id: uid(), name: '新しいプロジェクト', items: [makeItem()] });
+    if (state.activeProjectId === id) { state.activeProjectId = state.projects[0].id; activeId = null; }
+    render(); saveNow();
+  }
+  function startRename(id){
+    const li = $('#projectList li[data-id="' + id + '"]'); if (!li) return;
+    const p = state.projects.find(p => p.id === id); if (!p) return;
+    const input = document.createElement('input');
+    input.className = 'prename'; input.type = 'text'; input.maxLength = 60; input.value = p.name;
+    input.setAttribute('aria-label', 'プロジェクト名');
+    li.innerHTML = ''; li.appendChild(input);
+    let done = false;
+    const finish = (commitName) => {
+      if (done) return; done = true;
+      if (commitName) { const v = input.value.trim(); p.name = v || '無題のプロジェクト'; }
+      render(); saveNow();
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+    input.focus(); input.select();
+  }
+  $('#projectList').addEventListener('click', (e) => {
+    const li = e.target.closest('li.project'); if (!li) return;
+    const id = li.dataset.id;
+    if (e.target.closest('.pedit')) startRename(id);
+    else if (e.target.closest('.pdel')) deleteProject(id);
+    else if (e.target.closest('.pname')) switchProject(id);
+  });
+  $('#projectList').addEventListener('dblclick', (e) => {
+    const li = e.target.closest('li.project');
+    if (li && e.target.closest('.pname')) startRename(li.dataset.id);
+  });
+  $('#addProject').addEventListener('click', addProject);
+
+  /* ========== J. export / import / copy ========== */
+  let toastTimer = null;
+  function toast(msg){
+    toastEl.textContent = msg; toastEl.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2000);
+  }
+  function closeMenu(){ moreMenu.open = false; }
+  document.addEventListener('click', (e) => { if (moreMenu.open && !moreMenu.contains(e.target)) moreMenu.open = false; });
+
+  function dateStamp(){ const d = new Date(); const z = n => String(n).padStart(2, '0'); return d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()); }
+  $('#btnExport').addEventListener('click', () => {
+    closeMenu();
+    saveSoon.flush();
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'outliner-' + dateStamp() + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  $('#btnImport').addEventListener('click', () => { closeMenu(); importFile.value = ''; importFile.click(); });
+  importFile.addEventListener('change', () => {
+    const f = importFile.files && importFile.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const raw = JSON.parse(r.result);
+        const list = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.projects)) ? raw.projects : (raw && Array.isArray(raw.items)) ? [raw] : null;
+        if (!list) throw new Error('bad shape');
+        const existing = new Set();
+        state.projects.forEach(p => { existing.add(p.id); p.items.forEach(it => existing.add(it.id)); });
+        const imported = normalizeProjects(list, existing);
+        if (!imported.length) throw new Error('empty');
+        state.projects = state.projects.concat(imported);
+        state.activeProjectId = imported[0].id; activeId = null;
+        render(); saveNow();
+        toast(imported.length + ' 件のプロジェクトを読み込みました');
+      } catch (e) {
+        alert('読み込みに失敗しました。書き出した JSON ファイルを選んでください。');
+      }
+      importFile.value = '';
+    };
+    r.readAsText(f);
+  });
+  $('#btnCopy').addEventListener('click', () => {
+    closeMenu();
+    const text = toPlainText(items());
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+      if (ok) toast('コピーしました'); else alert('コピーできませんでした');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => toast('コピーしました'), fallback);
+    } else fallback();
+  });
+
+  /* ========== K. toolbar & visualViewport ========== */
+  toolbar.addEventListener('mousedown', (e) => e.preventDefault());
+  toolbar.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+  toolbar.addEventListener('pointerdown', (e) => {
+    const b = e.target.closest('button[data-cmd]'); if (!b || b.disabled) return;
+    e.preventDefault();
+    runToolbar(b.dataset.cmd);
+  });
+  function runToolbar(name){
+    let id = activeId && idxOf(activeId) >= 0 ? activeId : null;
+    if (!id) {
+      const vis = visibleIndices(items());
+      id = vis.length ? items()[vis[vis.length - 1]].id : null;
+    }
+    const caret = currentCaret();
+    switch (name) {
+      case 'indent': if (id) cmd.indent(id, caret); break;
+      case 'outdent': if (id) cmd.outdent(id, caret); break;
+      case 'moveUp': if (id) cmd.moveUp(id, caret); break;
+      case 'moveDown': if (id) cmd.moveDown(id, caret); break;
+      case 'toggle': if (id) cmd.toggle(id); break;
+      case 'add': cmd.addBelow(activeId && idxOf(activeId) >= 0 ? activeId : null); break;
+      case 'delete': if (id) cmd.deleteItem(id); break;
+    }
+  }
+  function placeToolbar(){
+    const vv = window.visualViewport; if (!vv) return;
+    const bottom = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+    toolbar.style.bottom = bottom + 'px';
+    toastEl.style.bottom = 'calc(var(--toolbar-h) + 24px + ' + bottom + 'px)';
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', placeToolbar);
+    window.visualViewport.addEventListener('scroll', placeToolbar);
+  }
+  if (!supportsFieldSizing) {
+    window.addEventListener('resize', debounce(() => { listEl.querySelectorAll('textarea').forEach(autosize); }, 150));
+  }
+
+  /* ========== L. init ========== */
+  window.addEventListener('pagehide', () => saveSoon.flush());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveSoon.flush(); });
+  window.addEventListener('beforeunload', () => saveSoon.flush());
+
+  render();
+  placeToolbar();
+
+  if (location.hash === '#test') {
+    window.__outliner = {
+      getItems: () => JSON.parse(JSON.stringify(items())),
+      getState: () => JSON.parse(JSON.stringify(state)),
+      checkInvariants: () => {
+        const its = items();
+        for (let i = 0; i < its.length; i++) {
+          const d = its[i].depth;
+          if (d < 0 || d > MAX_DEPTH) throw new Error('depth out of range at ' + i);
+          if (i === 0 ? d !== 0 : d > its[i - 1].depth + 1) throw new Error('depth jump at ' + i);
+        }
+        return true;
+      },
+      reset: () => { state = DEFAULT_STATE(); activeId = null; render(); saveNow(); }
+    };
+  }
+})();
+</script>
+</body>
+</html>
