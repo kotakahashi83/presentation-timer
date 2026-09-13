@@ -986,12 +986,22 @@
   document.addEventListener('click', (e) => { if (moreMenu.open && !moreMenu.contains(e.target)) moreMenu.open = false; });
 
   function dateStamp(){ const d = new Date(); const z = n => String(n).padStart(2, '0'); return d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()); }
-  $('#btnExport').addEventListener('click', () => {
+  $('#btnExport').addEventListener('click', async () => {
     closeMenu();
     saveSoon.flush();
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const filename = 'outliner-' + dateStamp() + '.json';
+    const json = JSON.stringify(state, null, 2);
+    // claude.ai の Artifact 内では downloads 機能で保存する（無ければ通常のダウンロード）
+    let downloads = null;
+    try { if (window.claude && typeof window.claude.use === 'function') downloads = await window.claude.use('downloads'); } catch (e) {}
+    if (downloads) {
+      try { await downloads.save({ filename: filename, data: json }); toast('書き出しました'); }
+      catch (e) { if (!e || e.code !== 'declined') alert('書き出しできませんでした'); }
+      return;
+    }
+    const blob = new Blob([json], { type: 'application/json' });
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = 'outliner-' + dateStamp() + '.json';
+    a.href = URL.createObjectURL(blob); a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   });
