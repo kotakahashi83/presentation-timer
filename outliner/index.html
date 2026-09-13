@@ -25,7 +25,7 @@
     --toolbar-h:56px;
   }
   @media (prefers-color-scheme: dark){
-    :root{
+    :root:not([data-theme="light"]){
       --bg:#141517;
       --panel:#1c1e21;
       --fg:#ececea;
@@ -36,6 +36,17 @@
       --danger:#f0705f;
       --shadow:0 10px 30px rgba(0,0,0,0.55);
     }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141517;
+    --panel:#1c1e21;
+    --fg:#ececea;
+    --fg-muted:#8f8f89;
+    --border:#2c2f34;
+    --accent:#5b9cf0;
+    --accent-soft:rgba(91,156,240,0.18);
+    --danger:#f0705f;
+    --shadow:0 10px 30px rgba(0,0,0,0.55);
   }
 
   *{box-sizing:border-box;}
