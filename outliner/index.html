@@ -82,6 +82,14 @@
     font-size:17px;font-weight:700;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
+  #syncDot{
+    width:8px;height:8px;border-radius:50%;flex:none;margin:0 6px;
+    background:var(--fg-muted);opacity:.6;
+  }
+  #syncDot[data-sync="synced"]{background:#2fa36b;opacity:1;}
+  #syncDot[data-sync="syncing"]{background:var(--accent);opacity:1;animation:sync-pulse 1s ease-in-out infinite;}
+  #syncDot[data-sync="error"]{background:var(--danger);opacity:1;}
+  @keyframes sync-pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
   #moreMenu{position:relative;}
   #moreMenu summary{list-style:none;cursor:pointer;}
   #moreMenu summary::-webkit-details-marker{display:none;}
@@ -258,6 +266,7 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
   </button>
   <h1 id="projectTitle">アウトライナー</h1>
+  <span id="syncDot" hidden title=""></span>
   <details id="moreMenu">
     <summary class="icon-btn" aria-label="メニュー">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
@@ -275,7 +284,7 @@
     <div class="sidebar-head">プロジェクト</div>
     <ul id="projectList"></ul>
     <button id="addProject" type="button">＋ 新規プロジェクト</button>
-    <div class="sidebar-foot">データはこの端末のブラウザに保存されます。</div>
+    <div class="sidebar-foot" id="syncNote">データはこの端末のブラウザに保存されます。</div>
   </aside>
   <div id="backdrop"></div>
   <main id="main">
@@ -363,7 +372,7 @@
     ];
     const items = rows.map(r => makeItem(r[0], r[1]));
     items[6].collapsed = true;
-    const p = { id: uid(), name: 'はじめてのプロジェクト', items: items };
+    const p = { id: 'welcome', name: 'はじめてのプロジェクト', items: items, createdAt: Date.now(), synced: false };
     return { version: 1, activeProjectId: p.id, projects: [p] };
   }
 
@@ -371,8 +380,10 @@
     seen = seen || new Set();
     const fixId = (o) => { if (typeof o.id !== 'string' || !o.id || seen.has(o.id)) o.id = uid(); seen.add(o.id); };
     if (!Array.isArray(list)) return [];
-    return list.filter(p => p && typeof p === 'object').map(p => {
+    const base = Date.now();
+    return list.filter(p => p && typeof p === 'object').map((p, index) => {
       fixId(p);
+      const createdAt = Number.isFinite(p.createdAt) ? p.createdAt : base + index;
       const name = (typeof p.name === 'string' && p.name.trim()) ? p.name.trim() : '無題のプロジェクト';
       let prevDepth = -1;
       let items = (Array.isArray(p.items) ? p.items : []).filter(it => it && typeof it === 'object').map(it => {
@@ -384,7 +395,7 @@
         return { id: it.id, text: text, depth: depth, collapsed: !!it.collapsed };
       });
       if (!items.length) items.push(makeItem());
-      return { id: p.id, name: name, items: items };
+      return { id: p.id, name: name, items: items, createdAt: createdAt, synced: !!p.synced };
     });
   }
 
@@ -407,6 +418,7 @@
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
   }
   const saveSoon = debounce(saveNow, 300);
+  function newProject(name){ return { id: uid(), name: name, items: [makeItem()], createdAt: Date.now(), synced: false }; }
 
   let state = load();
   let activeId = null;
@@ -588,7 +600,7 @@
   function commit(focusId, caret){
     render();
     if (focusId) focusItem(focusId, caret);
-    saveNow();
+    touch(state.activeProjectId);
   }
   function currentCaret(){
     const el = document.activeElement;
@@ -636,7 +648,7 @@
       }
       render();
       if (focus) focusItem(focus, 'end'); else renderToolbarState();
-      saveNow();
+      touch(state.activeProjectId);
     },
     addBelow(id){
       const its = items(); const i = id ? idxOf(id) : -1;
@@ -738,6 +750,7 @@
     items()[i].text = ta.value;
     autosize(ta);
     saveSoon();
+    markDirty(state.activeProjectId);
   });
 
   listEl.addEventListener('paste', (e) => {
@@ -911,7 +924,7 @@
     block.forEach(b => { b.depth += delta; });
     its.splice.apply(its, [to, 0].concat(block));
     render();
-    saveNow();
+    touch(state.activeProjectId);
     if (activeId === id) renderToolbarState();
   }
 
@@ -928,19 +941,22 @@
     window.scrollTo(0, 0);
   }
   function addProject(){
-    const p = { id: uid(), name: '新しいプロジェクト', items: [makeItem()] };
+    const p = newProject('新しいプロジェクト');
     state.projects.push(p);
     state.activeProjectId = p.id; activeId = null;
-    render(); saveNow();
+    render(); touch(p.id);
     startRename(p.id);
   }
   function deleteProject(id){
     const p = state.projects.find(p => p.id === id); if (!p) return;
     if (!confirm('「' + p.name + '」を削除しますか？この操作は取り消せません。')) return;
     state.projects = state.projects.filter(q => q.id !== id);
-    if (!state.projects.length) state.projects.push({ id: uid(), name: '新しいプロジェクト', items: [makeItem()] });
+    let replacement = null;
+    if (!state.projects.length) { replacement = newProject('新しいプロジェクト'); state.projects.push(replacement); }
     if (state.activeProjectId === id) { state.activeProjectId = state.projects[0].id; activeId = null; }
     render(); saveNow();
+    deleteRemote(id);
+    if (replacement) touch(replacement.id);
   }
   function startRename(id){
     const li = $('#projectList li[data-id="' + id + '"]'); if (!li) return;
@@ -953,7 +969,8 @@
     const finish = (commitName) => {
       if (done) return; done = true;
       if (commitName) { const v = input.value.trim(); p.name = v || '無題のプロジェクト'; }
-      render(); saveNow();
+      render(); touch(id);
+      if (pendingSnap) { const s = pendingSnap; pendingSnap = null; applySnapshot(s); }
     };
     input.addEventListener('keydown', (e) => {
       if (e.isComposing || e.keyCode === 229) return;
@@ -1018,9 +1035,11 @@
         state.projects.forEach(p => { existing.add(p.id); p.items.forEach(it => existing.add(it.id)); });
         const imported = normalizeProjects(list, existing);
         if (!imported.length) throw new Error('empty');
+        imported.forEach(p => { p.createdAt = Date.now(); p.synced = false; });
         state.projects = state.projects.concat(imported);
         state.activeProjectId = imported[0].id; activeId = null;
         render(); saveNow();
+        imported.forEach(p => markDirty(p.id));
         toast(imported.length + ' 件のプロジェクトを読み込みました');
       } catch (e) {
         alert('読み込みに失敗しました。書き出した JSON ファイルを選んでください。');
@@ -1085,13 +1104,149 @@
     window.addEventListener('resize', debounce(() => { listEl.querySelectorAll('textarea').forEach(autosize); }, 150));
   }
 
+  /* ========== M. sync (claude.ai Artifact の共有 db) ========== */
+  // 同じ Artifact リンクを開いた端末同士で projects/<id> ドキュメントを共有する。
+  // window.claude が無い環境（GitHub Pages・ローカル）では localStorage のみで動く。
+  const clientId = uid();
+  let db = null;
+  let syncState = 'local';       // 'local' | 'syncing' | 'synced' | 'error'
+  let unsubscribe = null;
+  let firstSnapshot = true;
+  let pendingSnap = null;
+  let syncErrorShown = false;
+  let dirtySeq = 0;
+  const dirty = new Map();       // projectId -> seq（未送信のローカル変更）
+  const pushTimers = new Map();  // projectId -> timeout id
+
+  function touch(projectId){ saveNow(); markDirty(projectId); }
+
+  function markDirty(id){
+    if (!db || !id) return;
+    dirty.set(id, ++dirtySeq);
+    clearTimeout(pushTimers.get(id));
+    pushTimers.set(id, setTimeout(() => pushProject(id, false), 500));
+    setSyncState('syncing');
+  }
+  function projectDocBody(p){
+    return JSON.parse(JSON.stringify({
+      name: p.name, items: p.items, createdAt: p.createdAt || Date.now(), updatedAt: Date.now(), clientId: clientId
+    }));
+  }
+  async function pushProject(id, retried){
+    clearTimeout(pushTimers.get(id)); pushTimers.delete(id);
+    if (!db) return;
+    const p = state.projects.find(q => q.id === id);
+    if (!p) { dirty.delete(id); return; }
+    const seq = dirty.get(id);
+    try {
+      await db.doc('projects/' + id).set(projectDocBody(p));
+      if (!p.synced) { p.synced = true; saveNow(); }
+      if (dirty.get(id) === seq) dirty.delete(id);
+      if (!dirty.size && !pushTimers.size && syncState !== 'local') setSyncState('synced');
+    } catch (e) {
+      if (e && e.code === 'unavailable' && !retried) {
+        setTimeout(() => pushProject(id, true), 800 + Math.random() * 700);
+        return;
+      }
+      syncFailed(e);
+    }
+  }
+  async function deleteRemote(id){
+    if (!db) return;
+    dirty.delete(id); clearTimeout(pushTimers.get(id)); pushTimers.delete(id);
+    try { await db.doc('projects/' + id).delete(); } catch (e) { syncFailed(e); }
+  }
+  function flushPushes(){ Array.from(pushTimers.keys()).forEach(id => pushProject(id, false)); }
+
+  function applySnapshot(snap){
+    if (!db) return;
+    if ($('#projectList .prename')) { pendingSnap = snap; return; }   // 名前変更中は後で反映
+    pendingSnap = null;
+    if (firstSnapshot) {
+      firstSnapshot = false;
+      if (snap.empty) {                                   // 初回: ローカルのデータをアップロード
+        state.projects.forEach(p => markDirty(p.id));
+        return;
+      }
+    }
+    const removed = new Set(snap.docChanges().filter(c => c.type === 'removed').map(c => c.doc.id));
+    const localById = new Map(state.projects.map(p => [p.id, p]));
+    const next = [];
+    const seen = new Set();
+    snap.docs.forEach(d => {
+      if (!d.exists) return;
+      const data = d.data() || {};
+      seen.add(d.id);
+      const lp = localById.get(d.id);
+      if (lp && (dirty.has(d.id) || pushTimers.has(d.id) || data.clientId === clientId)) { next.push(lp); return; }
+      const norm = normalizeProjects([{
+        id: d.id, name: data.name, items: JSON.parse(JSON.stringify(data.items || [])), createdAt: data.createdAt, synced: true
+      }])[0];
+      norm.id = d.id;
+      next.push(norm);
+    });
+    state.projects.forEach(p => {
+      if (seen.has(p.id)) return;
+      if (dirty.has(p.id) || pushTimers.has(p.id)) { next.push(p); return; }
+      if (p.synced || removed.has(p.id)) return;          // 他の端末で削除された
+      next.push(p); markDirty(p.id);                      // まだ送っていないローカルのプロジェクト
+    });
+    next.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    if (!next.length) { const p = newProject('新しいプロジェクト'); next.push(p); markDirty(p.id); }
+    state.projects = next;
+    if (!state.projects.some(p => p.id === state.activeProjectId)) { state.activeProjectId = state.projects[0].id; activeId = null; }
+    render(); saveNow();
+    if (!dirty.size && !pushTimers.size) setSyncState('synced');
+  }
+  function syncFailed(e){
+    const code = e && e.code;
+    if (code === 'revoked' || code === 'not_granted' || code === 'capability_disabled' || code === 'capability_removed') { goLocal(); return; }
+    setSyncState('error');
+    if (!syncErrorShown) { syncErrorShown = true; toast('同期できませんでした'); }
+  }
+  function goLocal(){
+    if (unsubscribe) { try { unsubscribe(); } catch (e) {} unsubscribe = null; }
+    db = null; dirty.clear();
+    pushTimers.forEach(t => clearTimeout(t)); pushTimers.clear();
+    setSyncState('local');
+  }
+  function setSyncState(s){ syncState = s; renderSyncState(); }
+  function renderSyncState(){
+    const dot = $('#syncDot'), note = $('#syncNote');
+    const text = {
+      local: 'データはこの端末のブラウザに保存されます。',
+      syncing: '同期中… 同じリンクを開いた端末で共有されます。',
+      synced: '同期: オン。同じリンクを開いた端末で共有されます。',
+      error: '同期できませんでした。この端末には保存されています。'
+    }[syncState];
+    note.textContent = text;
+    dot.hidden = syncState === 'local';
+    dot.dataset.sync = syncState;
+    dot.title = text;
+  }
+  async function initSync(){
+    if (!(window.claude && typeof window.claude.use === 'function')) return;
+    let d = null;
+    try { d = await window.claude.use('db'); } catch (e) { d = null; }
+    if (!d) return;
+    db = d;
+    setSyncState('syncing');
+    unsubscribe = db.collection('projects').onSnapshot(applySnapshot, (e) => {
+      syncFailed(e);
+      goLocal();
+      toast('同期を停止しました。再読み込みで再接続します');
+    });
+  }
+
   /* ========== L. init ========== */
-  window.addEventListener('pagehide', () => saveSoon.flush());
-  document.addEventListener('visibilitychange', () => { if (document.hidden) saveSoon.flush(); });
-  window.addEventListener('beforeunload', () => saveSoon.flush());
+  window.addEventListener('pagehide', () => { saveSoon.flush(); flushPushes(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { saveSoon.flush(); flushPushes(); } });
+  window.addEventListener('beforeunload', () => { saveSoon.flush(); flushPushes(); });
 
   render();
+  renderSyncState();
   placeToolbar();
+  initSync();
 
   if (location.hash === '#test') {
     window.__outliner = {
@@ -1106,7 +1261,9 @@
         }
         return true;
       },
-      reset: () => { state = DEFAULT_STATE(); activeId = null; render(); saveNow(); }
+      reset: () => { state = DEFAULT_STATE(); activeId = null; render(); saveNow(); state.projects.forEach(p => markDirty(p.id)); },
+      syncState: () => syncState,
+      isDirty: () => dirty.size > 0 || pushTimers.size > 0
     };
   }
 })();
